@@ -15,6 +15,10 @@ function isBackstock(room: string): boolean {
   return normalize(room).includes("backstock");
 }
 
+function isReceivingRoom(room: string): boolean {
+  return normalize(room).includes("receiving room");
+}
+
 export function createMoveRecommendations(
   rows: InventoryRow[]
 ): MoveRecommendation[] {
@@ -23,7 +27,9 @@ export function createMoveRecommendations(
   for (const row of rows) {
     const productKey = normalize(row.product);
 
-    if (!productKey) continue;
+    if (!productKey) {
+      continue;
+    }
 
     const existingRows = groupedProducts.get(productKey) ?? [];
     existingRows.push(row);
@@ -37,7 +43,7 @@ export function createMoveRecommendations(
       .filter((row) => isVault(row.room))
       .reduce((total, row) => total + row.available, 0);
 
-    // Leave all Backstock packages alone when Vault has inventory.
+    // Do nothing when the Vault already has this exact product.
     if (vaultAvailable > 0) {
       continue;
     }
@@ -49,13 +55,26 @@ export function createMoveRecommendations(
         row.packageId
     );
 
-    if (backstockPackages.length === 0) {
+    const receivingPackages = productRows.filter(
+      (row) =>
+        isReceivingRoom(row.room) &&
+        row.available > 0 &&
+        row.packageId
+    );
+
+    // Backstock is always preferred.
+    const eligiblePackages =
+      backstockPackages.length > 0
+        ? backstockPackages
+        : receivingPackages;
+
+    if (eligiblePackages.length === 0) {
       continue;
     }
 
-    // Choose exactly one METRC package.
-    // For now, select the package with the highest available quantity.
-    const selectedPackage = [...backstockPackages].sort(
+    // Select exactly one METRC package.
+    // Currently selects the package with the highest available quantity.
+    const selectedPackage = [...eligiblePackages].sort(
       (a, b) => b.available - a.available
     )[0];
 
