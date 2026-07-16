@@ -41,7 +41,7 @@ import {
   normalizePackageId,
 } from "@/lib/counts";
 
-import type { InventoryRow } from "@/types/inventory";
+import type { CountSessionSummary } from "@/types/analytics";
 
 import type {
   CountEntry,
@@ -51,7 +51,7 @@ import type {
   CountStatus,
 } from "@/types/count";
 
-import type { CountSessionSummary } from "@/types/analytics";
+import type { InventoryRow } from "@/types/inventory";
 
 type StatusFilter = "all" | CountStatus;
 
@@ -59,13 +59,9 @@ type UploadedCountRow = Record<string, unknown>;
 
 export default function CountPage() {
   const [inventory, setInventory] = useState<InventoryRow[]>([]);
-  const [inventoryFileName, setInventoryFileName] =
-    useState("");
+  const [inventoryFileName, setInventoryFileName] = useState("");
 
-  const [countEntries, setCountEntries] = useState<
-    CountEntry[]
-  >([]);
-
+  const [countEntries, setCountEntries] = useState<CountEntry[]>([]);
   const [countFileName, setCountFileName] = useState("");
 
   const [scopeType, setScopeType] =
@@ -73,14 +69,12 @@ export default function CountPage() {
 
   const [scopeValue, setScopeValue] = useState("All");
 
-  const [activeScope, setActiveScope] =
-    useState<CountScope>({
-      type: "all",
-      value: "All",
-    });
+  const [activeScope, setActiveScope] = useState<CountScope>({
+    type: "all",
+    value: "All",
+  });
 
-  const [sessionStartedAt, setSessionStartedAt] =
-    useState("");
+  const [sessionStartedAt, setSessionStartedAt] = useState("");
 
   const [search, setSearch] = useState("");
   const [roomFilter, setRoomFilter] = useState("All");
@@ -92,36 +86,51 @@ export default function CountPage() {
   const [uploadError, setUploadError] = useState("");
 
   useEffect(() => {
-    const savedSession = getSavedCountSession();
+    const frameId = window.requestAnimationFrame(() => {
+      const savedSession = getSavedCountSession();
+      const storedInventory = getCurrentInventory();
+      const storedFileName = getInventoryFileName();
 
-    setInventory(getCurrentInventory());
-    setInventoryFileName(getInventoryFileName());
+      setInventory(storedInventory);
+      setInventoryFileName(storedFileName);
 
-    if (savedSession) {
-      setActiveScope({
-        type: savedSession.summary.scopeType,
-        value: savedSession.summary.scopeValue,
-      });
+      if (savedSession) {
+        setActiveScope({
+          type: savedSession.summary.scopeType,
+          value: savedSession.summary.scopeValue,
+        });
 
-      setScopeType(savedSession.summary.scopeType);
-      setScopeValue(savedSession.summary.scopeValue);
-      setCountEntries(savedSession.entries);
-      setCountFileName(savedSession.countFileName);
-      setSessionStartedAt(
-        savedSession.summary.startedAt
-      );
-    } else {
-      setSessionStartedAt(new Date().toISOString());
-    }
+        setScopeType(savedSession.summary.scopeType);
+        setScopeValue(savedSession.summary.scopeValue);
 
-    setLoaded(true);
+        setCountEntries(
+          Array.isArray(savedSession.entries)
+            ? savedSession.entries
+            : []
+        );
+
+        setCountFileName(savedSession.countFileName ?? "");
+
+        setSessionStartedAt(
+          savedSession.summary.startedAt ||
+            new Date().toISOString()
+        );
+      } else {
+        setSessionStartedAt(new Date().toISOString());
+      }
+
+      setLoaded(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, []);
 
   const allRooms = useMemo(() => {
     return uniqueSorted(
       inventory.map(
-        (row) =>
-          cleanCsvValue(row.room) || "Not listed"
+        (row) => cleanCsvValue(row.room) || "Not listed"
       )
     );
   }, [inventory]);
@@ -130,8 +139,7 @@ export default function CountPage() {
     return uniqueSorted(
       inventory.map(
         (row) =>
-          cleanCsvValue(row.category) ||
-          "Uncategorized"
+          cleanCsvValue(row.category) || "Uncategorized"
       )
     );
   }, [inventory]);
@@ -141,28 +149,31 @@ export default function CountPage() {
       return;
     }
 
-    if (scopeType === "all") {
-      setScopeValue("All");
-      return;
-    }
+    const frameId = window.requestAnimationFrame(() => {
+      if (scopeType === "all") {
+        if (scopeValue !== "All") {
+          setScopeValue("All");
+        }
 
-    if (scopeType === "room") {
-      const currentRoomStillExists =
-        allRooms.includes(scopeValue);
-
-      if (!currentRoomStillExists) {
-        setScopeValue(allRooms[0] ?? "All");
+        return;
       }
 
-      return;
-    }
+      if (scopeType === "room") {
+        if (!allRooms.includes(scopeValue)) {
+          setScopeValue(allRooms[0] ?? "All");
+        }
 
-    const currentCategoryStillExists =
-      allCategories.includes(scopeValue);
+        return;
+      }
 
-    if (!currentCategoryStillExists) {
-      setScopeValue(allCategories[0] ?? "All");
-    }
+      if (!allCategories.includes(scopeValue)) {
+        setScopeValue(allCategories[0] ?? "All");
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, [
     loaded,
     scopeType,
@@ -196,17 +207,13 @@ export default function CountPage() {
   }, [inventory, activeScope]);
 
   const results = useMemo(() => {
-    return buildCountResults(
-      scopedInventory,
-      countEntries
-    );
+    return buildCountResults(scopedInventory, countEntries);
   }, [scopedInventory, countEntries]);
 
   const rooms = useMemo(() => {
     return uniqueSorted(
       results.map(
-        (result) =>
-          result.room || "Not listed"
+        (result) => result.room || "Not listed"
       )
     );
   }, [results]);
@@ -217,8 +224,7 @@ export default function CountPage() {
     return results.filter((result) => {
       if (
         roomFilter !== "All" &&
-        normalizeText(result.room) !==
-          normalizeText(roomFilter)
+        normalizeText(result.room) !== normalizeText(roomFilter)
       ) {
         return false;
       }
@@ -279,9 +285,7 @@ export default function CountPage() {
     }
 
     return Math.round(
-      (matchedResults.length /
-        countedResults.length) *
-        100
+      (matchedResults.length / countedResults.length) * 100
     );
   }, [
     countedResults.length,
@@ -294,8 +298,7 @@ export default function CountPage() {
     }
 
     return Math.round(
-      (countedResults.length / results.length) *
-        100
+      (countedResults.length / results.length) * 100
     );
   }, [
     countedResults.length,
@@ -374,16 +377,13 @@ export default function CountPage() {
     packageId: string,
     value: string
   ) {
-    const normalizedId =
-      normalizePackageId(packageId);
+    const normalizedId = normalizePackageId(packageId);
 
     if (value.trim() === "") {
       setCountEntries((current) =>
         current.filter(
           (entry) =>
-            normalizePackageId(
-              entry.packageId
-            ) !== normalizedId
+            normalizePackageId(entry.packageId) !== normalizedId
         )
       );
 
@@ -400,13 +400,10 @@ export default function CountPage() {
     }
 
     setCountEntries((current) => {
-      const existingIndex =
-        current.findIndex(
-          (entry) =>
-            normalizePackageId(
-              entry.packageId
-            ) === normalizedId
-        );
+      const existingIndex = current.findIndex(
+        (entry) =>
+          normalizePackageId(entry.packageId) === normalizedId
+      );
 
       const updatedEntry: CountEntry = {
         packageId: cleanCsvValue(packageId),
@@ -426,15 +423,12 @@ export default function CountPage() {
   }
 
   function clearCount(packageId: string) {
-    const normalizedId =
-      normalizePackageId(packageId);
+    const normalizedId = normalizePackageId(packageId);
 
     setCountEntries((current) =>
       current.filter(
         (entry) =>
-          normalizePackageId(
-            entry.packageId
-          ) !== normalizedId
+          normalizePackageId(entry.packageId) !== normalizedId
       )
     );
   }
@@ -475,9 +469,7 @@ export default function CountPage() {
       complete: (parseResult) => {
         try {
           const uploadedEntries =
-            parseUploadedCountRows(
-              parseResult.data
-            );
+            parseUploadedCountRows(parseResult.data);
 
           if (uploadedEntries.length === 0) {
             throw new Error(
@@ -543,27 +535,23 @@ export default function CountPage() {
   }
 
   function exportFullCount() {
-    const exportRows = results.map(
-      (result) => ({
-        "METRC Package ID": result.packageId,
-        Product: result.product,
-        Room: result.room,
-        Category: result.category,
-        Vendor: result.vendor,
-        Expected: result.expected,
-        Counted:
-          result.counted === null
-            ? ""
-            : result.counted,
-        Variance:
-          result.variance === null
-            ? ""
-            : result.variance,
-        Status: getStatusLabel(
-          result.status
-        ),
-      })
-    );
+    const exportRows = results.map((result) => ({
+      "METRC Package ID": result.packageId,
+      Product: result.product,
+      Room: result.room,
+      Category: result.category,
+      Vendor: result.vendor,
+      Expected: result.expected,
+      Counted:
+        result.counted === null
+          ? ""
+          : result.counted,
+      Variance:
+        result.variance === null
+          ? ""
+          : result.variance,
+      Status: getStatusLabel(result.status),
+    }));
 
     downloadCsv(
       Papa.unparse(exportRows),
@@ -613,9 +601,8 @@ export default function CountPage() {
             </h1>
 
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Count the full inventory, one room, or
-              one category. Matching rows turn green.
-              Discrepancies turn red.
+              Count the full inventory, one room, or one category.
+              Matching rows turn green. Discrepancies turn red.
             </p>
 
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
@@ -624,8 +611,7 @@ export default function CountPage() {
               </p>
 
               <p className="mt-1 truncate text-sm font-semibold text-white">
-                {inventoryFileName ||
-                  "No inventory uploaded"}
+                {inventoryFileName || "No inventory uploaded"}
               </p>
             </div>
           </header>
@@ -639,8 +625,8 @@ export default function CountPage() {
               </p>
 
               <p className="mt-2 text-sm text-slate-500">
-                Upload the Dutchie inventory CSV from
-                the Transfers page first.
+                Upload the Dutchie inventory CSV from the Transfers
+                page first.
               </p>
 
               <Link
@@ -671,8 +657,7 @@ export default function CountPage() {
                       value={scopeType}
                       onChange={(event) =>
                         setScopeType(
-                          event.target
-                            .value as CountScopeType
+                          event.target.value as CountScopeType
                         )
                       }
                       className="mt-1 w-full bg-transparent text-sm font-semibold text-white outline-none"
@@ -709,9 +694,7 @@ export default function CountPage() {
                       value={scopeValue}
                       disabled={scopeType === "all"}
                       onChange={(event) =>
-                        setScopeValue(
-                          event.target.value
-                        )
+                        setScopeValue(event.target.value)
                       }
                       className="mt-1 w-full bg-transparent text-sm font-semibold text-white outline-none disabled:opacity-40"
                     >
@@ -736,17 +719,15 @@ export default function CountPage() {
                         ))}
 
                       {scopeType === "category" &&
-                        allCategories.map(
-                          (category) => (
-                            <option
-                              key={category}
-                              value={category}
-                              className="bg-slate-950"
-                            >
-                              {category}
-                            </option>
-                          )
-                        )}
+                        allCategories.map((category) => (
+                          <option
+                            key={category}
+                            value={category}
+                            className="bg-slate-950"
+                          >
+                            {category}
+                          </option>
+                        ))}
                     </select>
                   </label>
 
@@ -848,15 +829,14 @@ export default function CountPage() {
                       />
                     </label>
 
-                    {countFileName &&
-                      !uploadError && (
-                        <p className="mt-3 text-sm text-slate-400">
-                          Loaded:{" "}
-                          <span className="font-semibold text-white">
-                            {countFileName}
-                          </span>
-                        </p>
-                      )}
+                    {countFileName && !uploadError && (
+                      <p className="mt-3 text-sm text-slate-400">
+                        Loaded:{" "}
+                        <span className="font-semibold text-white">
+                          {countFileName}
+                        </span>
+                      </p>
+                    )}
 
                     {uploadError && (
                       <p className="mt-3 text-sm text-[var(--red)]">
@@ -880,8 +860,8 @@ export default function CountPage() {
                     </div>
 
                     <p className="mt-3 text-sm text-slate-400">
-                      {countedResults.length} of{" "}
-                      {results.length} packages counted
+                      {countedResults.length} of {results.length}{" "}
+                      packages counted
                     </p>
                   </div>
                 </div>
@@ -912,9 +892,7 @@ export default function CountPage() {
                       <select
                         value={roomFilter}
                         onChange={(event) =>
-                          setRoomFilter(
-                            event.target.value
-                          )
+                          setRoomFilter(event.target.value)
                         }
                         className="mt-1 w-full bg-transparent text-sm font-semibold text-white outline-none"
                       >
@@ -946,8 +924,7 @@ export default function CountPage() {
                         value={statusFilter}
                         onChange={(event) =>
                           setStatusFilter(
-                            event.target
-                              .value as StatusFilter
+                            event.target.value as StatusFilter
                           )
                         }
                         className="mt-1 w-full bg-transparent text-sm font-semibold text-white outline-none"
@@ -997,10 +974,8 @@ export default function CountPage() {
                       type="button"
                       onClick={exportDiscrepancies}
                       disabled={
-                        mismatchedResults.length ===
-                          0 &&
-                        notCountedResults.length ===
-                          0
+                        mismatchedResults.length === 0 &&
+                        notCountedResults.length === 0
                       }
                       className="flex items-center gap-2 rounded-xl border border-[rgba(255,100,127,0.2)] bg-[rgba(255,100,127,0.08)] px-3 py-2 text-xs font-semibold text-[var(--red)] disabled:cursor-not-allowed disabled:opacity-35"
                     >
@@ -1020,9 +995,7 @@ export default function CountPage() {
                     <button
                       type="button"
                       onClick={clearAllCounts}
-                      disabled={
-                        countEntries.length === 0
-                      }
+                      disabled={countEntries.length === 0}
                       className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-35"
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
@@ -1068,33 +1041,27 @@ export default function CountPage() {
                     </thead>
 
                     <tbody>
-                      {filteredResults.map(
-                        (result, index) => (
-                          <CountTableRow
-                            key={[
-                              result.packageId,
-                              result.room,
-                              result.product,
-                              index,
-                            ].join("-")}
-                            result={result}
-                            onCountChange={
-                              updateCount
-                            }
-                            onClear={clearCount}
-                          />
-                        )
-                      )}
+                      {filteredResults.map((result, index) => (
+                        <CountTableRow
+                          key={[
+                            result.packageId,
+                            result.room,
+                            result.product,
+                            index,
+                          ].join("-")}
+                          result={result}
+                          onCountChange={updateCount}
+                          onClear={clearCount}
+                        />
+                      ))}
 
-                      {filteredResults.length ===
-                        0 && (
+                      {filteredResults.length === 0 && (
                         <tr>
                           <td
                             colSpan={7}
                             className="px-5 py-16 text-center text-slate-500"
                           >
-                            No rows match the current
-                            cycle count.
+                            No rows match the current cycle count.
                           </td>
                         </tr>
                       )}
@@ -1287,10 +1254,7 @@ function CountSummaryCard({
 function parseUploadedCountRows(
   rows: UploadedCountRow[]
 ): CountEntry[] {
-  const entries = new Map<
-    string,
-    CountEntry
-  >();
+  const entries = new Map<string, CountEntry>();
 
   for (const row of rows) {
     const packageValue = findColumnValue(
@@ -1322,8 +1286,7 @@ function parseUploadedCountRows(
       String(packageValue ?? "")
     );
 
-    const counted =
-      parseQuantity(countValue);
+    const counted = parseQuantity(countValue);
 
     if (!packageId || counted === null) {
       continue;
@@ -1372,8 +1335,7 @@ function parseQuantity(
       .trim()
   );
 
-  return Number.isNaN(parsed) ||
-    parsed < 0
+  return Number.isNaN(parsed) || parsed < 0
     ? null
     : parsed;
 }
@@ -1432,11 +1394,8 @@ function downloadCsv(
     type: "text/csv;charset=utf-8",
   });
 
-  const url =
-    URL.createObjectURL(blob);
-
-  const link =
-    document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
 
   link.href = url;
   link.download = fileName;

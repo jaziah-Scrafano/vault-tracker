@@ -52,7 +52,7 @@ export default function UploadCard({
             </h2>
 
             <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
-              Import today's inventory export. Vault Tracker
+              Import today&apos;s inventory export. Vault Tracker
               will automatically determine which METRC package
               should move into the Vault.
             </p>
