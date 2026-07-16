@@ -1,3 +1,4 @@
+import type { CountSessionSummary } from "@/types/analytics";
 import type { CompletedMove } from "@/types/history";
 import type { InventoryRow } from "@/types/inventory";
 
@@ -9,6 +10,12 @@ const CURRENT_INVENTORY_KEY =
 
 const INVENTORY_FILE_NAME_KEY =
   "vault-tracker-inventory-file-name";
+
+const LATEST_COUNT_SESSION_KEY =
+  "vault-tracker-latest-count-session";
+
+const INVENTORY_UPLOAD_TIME_KEY =
+  "vault-tracker-inventory-upload-time";
 
 /* -------------------------------------------------------------------------- */
 /* Completed transfer history                                                  */
@@ -45,10 +52,14 @@ export function saveCompletedMoves(
     return;
   }
 
-  window.localStorage.setItem(
-    COMPLETED_MOVES_KEY,
-    JSON.stringify(moves)
-  );
+  try {
+    window.localStorage.setItem(
+      COMPLETED_MOVES_KEY,
+      JSON.stringify(moves)
+    );
+  } catch {
+    // Ignore browser storage failures.
+  }
 }
 
 export function clearCompletedMoves(): void {
@@ -96,10 +107,14 @@ export function saveCurrentInventory(
     return;
   }
 
-  window.localStorage.setItem(
-    CURRENT_INVENTORY_KEY,
-    JSON.stringify(inventory)
-  );
+  try {
+    window.localStorage.setItem(
+      CURRENT_INVENTORY_KEY,
+      JSON.stringify(inventory)
+    );
+  } catch {
+    // Ignore browser storage failures.
+  }
 }
 
 export function clearCurrentInventory(): void {
@@ -114,10 +129,14 @@ export function clearCurrentInventory(): void {
   window.localStorage.removeItem(
     INVENTORY_FILE_NAME_KEY
   );
+
+  window.localStorage.removeItem(
+    INVENTORY_UPLOAD_TIME_KEY
+  );
 }
 
 /* -------------------------------------------------------------------------- */
-/* Uploaded file name                                                          */
+/* Uploaded inventory filename                                                 */
 /* -------------------------------------------------------------------------- */
 
 export function getInventoryFileName(): string {
@@ -142,5 +161,96 @@ export function saveInventoryFileName(
   window.localStorage.setItem(
     INVENTORY_FILE_NAME_KEY,
     fileName
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Inventory upload time                                                       */
+/* -------------------------------------------------------------------------- */
+
+export function getInventoryUploadTime(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return (
+    window.localStorage.getItem(
+      INVENTORY_UPLOAD_TIME_KEY
+    ) ?? ""
+  );
+}
+
+export function saveInventoryUploadTime(
+  uploadedAt: string
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    INVENTORY_UPLOAD_TIME_KEY,
+    uploadedAt
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Latest count-session summary                                                */
+/* -------------------------------------------------------------------------- */
+
+export function getLatestCountSession():
+  | CountSessionSummary
+  | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const saved = window.localStorage.getItem(
+      LATEST_COUNT_SESSION_KEY
+    );
+
+    if (!saved) {
+      return null;
+    }
+
+    const parsed: unknown = JSON.parse(saved);
+
+    if (
+      typeof parsed !== "object" ||
+      parsed === null
+    ) {
+      return null;
+    }
+
+    return parsed as CountSessionSummary;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLatestCountSession(
+  session: CountSessionSummary
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      LATEST_COUNT_SESSION_KEY,
+      JSON.stringify(session)
+    );
+  } catch {
+    // Ignore browser storage failures.
+  }
+}
+
+export function clearLatestCountSession(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(
+    LATEST_COUNT_SESSION_KEY
   );
 }

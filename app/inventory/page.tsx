@@ -20,11 +20,11 @@ import {
 } from "lucide-react";
 
 import Sidebar from "@/components/layout/Sidebar";
+import ProductDetailsDrawer from "@/components/inventory/ProductDetailsDrawer";
 
-import {
-  getCurrentInventory,
-  getInventoryFileName,
-} from "@/lib/storage";
+import { createMoveRecommendations } from "@/lib/recommendations";
+
+import { getCurrentInventory, getInventoryFileName } from "@/lib/storage";
 
 import type { InventoryRow } from "@/types/inventory";
 
@@ -48,19 +48,32 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryRow[]>([]);
   const [fileName, setFileName] = useState("");
   const [search, setSearch] = useState("");
-  const [roomFilter, setRoomFilter] = useState<RoomType | "All">(
-    "All"
-  );
+  const [roomFilter, setRoomFilter] = useState<RoomType | "All">("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [vendorFilter, setVendorFilter] = useState("All");
   const [positiveOnly, setPositiveOnly] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
 
   useEffect(() => {
     setInventory(getCurrentInventory());
     setFileName(getInventoryFileName());
     setLoaded(true);
   }, []);
+
+  const recommendations = useMemo(() => {
+    return createMoveRecommendations(inventory);
+  }, [inventory]);
+
+  const selectedRecommendation = useMemo(() => {
+    if (!selectedProduct) {
+      return undefined;
+    }
+
+    return recommendations.find(
+      (item) => normalize(item.product) === normalize(selectedProduct),
+    );
+  }, [recommendations, selectedProduct]);
 
   const roomSummaries = useMemo<RoomSummary[]>(() => {
     const roomMap = new Map<
@@ -111,17 +124,13 @@ export default function InventoryPage() {
 
   const categories = useMemo(() => {
     return uniqueSorted(
-      inventory.map(
-        (row) => cleanCsvValue(row.category) || "Uncategorized"
-      )
+      inventory.map((row) => cleanCsvValue(row.category) || "Uncategorized"),
     );
   }, [inventory]);
 
   const vendors = useMemo(() => {
     return uniqueSorted(
-      inventory.map(
-        (row) => cleanCsvValue(row.vendor) || "Not listed"
-      )
+      inventory.map((row) => cleanCsvValue(row.vendor) || "Not listed"),
     );
   }, [inventory]);
 
@@ -134,15 +143,11 @@ export default function InventoryPage() {
           return false;
         }
 
-        if (
-          roomFilter !== "All" &&
-          getRoomType(row.room) !== roomFilter
-        ) {
+        if (roomFilter !== "All" && getRoomType(row.room) !== roomFilter) {
           return false;
         }
 
-        const category =
-          cleanCsvValue(row.category) || "Uncategorized";
+        const category = cleanCsvValue(row.category) || "Uncategorized";
 
         if (
           categoryFilter !== "All" &&
@@ -151,8 +156,7 @@ export default function InventoryPage() {
           return false;
         }
 
-        const vendor =
-          cleanCsvValue(row.vendor) || "Not listed";
+        const vendor = cleanCsvValue(row.vendor) || "Not listed";
 
         if (
           vendorFilter !== "All" &&
@@ -176,17 +180,15 @@ export default function InventoryPage() {
         );
       })
       .sort((a, b) => {
-        const productCompare = cleanCsvValue(
-          a.product
-        ).localeCompare(cleanCsvValue(b.product));
+        const productCompare = cleanCsvValue(a.product).localeCompare(
+          cleanCsvValue(b.product),
+        );
 
         if (productCompare !== 0) {
           return productCompare;
         }
 
-        return getRoomType(a.room).localeCompare(
-          getRoomType(b.room)
-        );
+        return getRoomType(a.room).localeCompare(getRoomType(b.room));
       });
   }, [
     inventory,
@@ -198,18 +200,11 @@ export default function InventoryPage() {
   ]);
 
   const totalAvailable = useMemo(() => {
-    return filteredInventory.reduce(
-      (total, row) => total + row.available,
-      0
-    );
+    return filteredInventory.reduce((total, row) => total + row.available, 0);
   }, [filteredInventory]);
 
   const uniqueProducts = useMemo(() => {
-    return new Set(
-      filteredInventory.map((row) =>
-        normalize(row.product)
-      )
-    ).size;
+    return new Set(filteredInventory.map((row) => normalize(row.product))).size;
   }, [filteredInventory]);
 
   const hasActiveFilters =
@@ -228,9 +223,7 @@ export default function InventoryPage() {
   }
 
   function selectRoom(room: RoomType) {
-    setRoomFilter((current) =>
-      current === room ? "All" : room
-    );
+    setRoomFilter((current) => (current === room ? "All" : room));
   }
 
   if (!loaded) {
@@ -271,15 +264,13 @@ export default function InventoryPage() {
                 </h1>
 
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                  Search every package and instantly filter inventory
-                  by its exact operational room.
+                  Search every package and instantly filter inventory by its
+                  exact operational room.
                 </p>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
-                <p className="text-xs text-slate-500">
-                  Current inventory file
-                </p>
+                <p className="text-xs text-slate-500">Current inventory file</p>
 
                 <p className="mt-1 max-w-[320px] truncate text-sm font-semibold text-white">
                   {fileName || "No inventory uploaded"}
@@ -346,9 +337,7 @@ export default function InventoryPage() {
                 <input
                   type="search"
                   value={search}
-                  onChange={(event) =>
-                    setSearch(event.target.value)
-                  }
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search product, METRC Package ID, SKU, strain, vendor..."
                   className="w-full bg-transparent text-sm text-white placeholder:text-slate-600 focus:outline-none"
                 />
@@ -356,23 +345,16 @@ export default function InventoryPage() {
 
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <label className="glass-input rounded-2xl px-4 py-3">
-                  <p className="text-xs text-slate-500">
-                    Room
-                  </p>
+                  <p className="text-xs text-slate-500">Room</p>
 
                   <select
                     value={roomFilter}
                     onChange={(event) =>
-                      setRoomFilter(
-                        event.target.value as RoomType | "All"
-                      )
+                      setRoomFilter(event.target.value as RoomType | "All")
                     }
                     className="mt-1 w-full bg-transparent text-sm font-semibold text-white outline-none"
                   >
-                    <option
-                      value="All"
-                      className="bg-slate-950"
-                    >
+                    <option value="All" className="bg-slate-950">
                       All rooms
                     </option>
 
@@ -404,9 +386,7 @@ export default function InventoryPage() {
 
                 <label className="glass-input flex cursor-pointer items-center justify-between rounded-2xl px-4 py-3">
                   <div>
-                    <p className="text-xs text-slate-500">
-                      Availability
-                    </p>
+                    <p className="text-xs text-slate-500">Availability</p>
 
                     <p className="mt-1 text-sm font-semibold text-white">
                       Positive inventory only
@@ -416,9 +396,7 @@ export default function InventoryPage() {
                   <input
                     type="checkbox"
                     checked={positiveOnly}
-                    onChange={(event) =>
-                      setPositiveOnly(event.target.checked)
-                    }
+                    onChange={(event) => setPositiveOnly(event.target.checked)}
                     className="h-4 w-4 accent-[var(--lime)]"
                   />
                 </label>
@@ -428,13 +406,8 @@ export default function InventoryPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-2 text-sm text-slate-500">
                     <Filter className="h-4 w-4" />
-
-                    {filteredInventory.length.toLocaleString()}{" "}
-                    package
-                    {filteredInventory.length === 1
-                      ? ""
-                      : "s"}{" "}
-                    match
+                    {filteredInventory.length.toLocaleString()} package
+                    {filteredInventory.length === 1 ? "" : "s"} match
                   </span>
 
                   {roomFilter !== "All" && (
@@ -495,39 +468,42 @@ export default function InventoryPage() {
                 <table className="min-w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-[0.12em] text-slate-500">
-                      <th className="px-5 py-4">
-                        METRC Package ID
-                      </th>
+                      <th className="px-5 py-4">METRC Package ID</th>
 
-                      <th className="px-5 py-4">
-                        Product
-                      </th>
+                      <th className="px-5 py-4">Product</th>
 
-                      <th className="px-5 py-4">
-                        Room
-                      </th>
+                      <th className="px-5 py-4">Room</th>
 
-                      <th className="px-5 py-4">
-                        Category
-                      </th>
+                      <th className="px-5 py-4">Category</th>
 
-                      <th className="px-5 py-4">
-                        Available
-                      </th>
+                      <th className="px-5 py-4">Available</th>
 
-                      <th className="px-5 py-4">
-                        SKU
-                      </th>
+                      <th className="px-5 py-4">SKU</th>
                     </tr>
                   </thead>
 
-                  <tbody>
-                    {filteredInventory.map((row) => (
+                  <tbody
+                    key={[
+                      roomFilter,
+                      categoryFilter,
+                      vendorFilter,
+                      positiveOnly ? "positive" : "all",
+                      search,
+                    ].join("-")}
+                  >
+                    {filteredInventory.map((row, index) => (
                       <tr
-                        key={`${row.packageId}-${getRoomType(
-                          row.room
-                        )}`}
-                        className="table-row"
+                        key={[
+                          cleanCsvValue(row.packageId),
+                          getRoomType(row.room),
+                          cleanCsvValue(row.vendor),
+                          cleanCsvValue(row.sku),
+                          index,
+                        ].join("-")}
+                        onClick={() =>
+                          setSelectedProduct(cleanCsvValue(row.product))
+                        }
+                        className="table-row cursor-pointer transition hover:bg-white/[0.045]"
                       >
                         <td className="px-5 py-5">
                           <p className="font-mono text-sm font-bold text-[var(--lime)]">
@@ -536,13 +512,19 @@ export default function InventoryPage() {
                         </td>
 
                         <td className="max-w-[430px] px-5 py-5">
-                          <p className="font-medium text-white">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedProduct(cleanCsvValue(row.product));
+                            }}
+                            className="text-left font-medium text-white transition hover:text-[var(--lime)]"
+                          >
                             {cleanCsvValue(row.product)}
-                          </p>
+                          </button>
 
                           <p className="mt-1 text-xs text-slate-500">
-                            {cleanCsvValue(row.vendor) ||
-                              "Vendor not listed"}
+                            {cleanCsvValue(row.vendor) || "Vendor not listed"}
 
                             {cleanCsvValue(row.strain)
                               ? ` · ${cleanCsvValue(row.strain)}`
@@ -556,8 +538,7 @@ export default function InventoryPage() {
 
                         <td className="px-5 py-5">
                           <span className="rounded-full border border-white/10 bg-white/[0.045] px-3 py-1.5 text-xs font-semibold text-slate-300">
-                            {cleanCsvValue(row.category) ||
-                              "Uncategorized"}
+                            {cleanCsvValue(row.category) || "Uncategorized"}
                           </span>
                         </td>
 
@@ -579,8 +560,8 @@ export default function InventoryPage() {
                           colSpan={6}
                           className="px-5 py-16 text-center text-slate-500"
                         >
-                          No inventory matches the selected room,
-                          search, and filters.
+                          No inventory matches the selected room, search, and
+                          filters.
                         </td>
                       </tr>
                     )}
@@ -591,6 +572,13 @@ export default function InventoryPage() {
           </section>
         </div>
       </div>
+
+      <ProductDetailsDrawer
+        product={selectedProduct}
+        inventory={inventory}
+        recommendation={selectedRecommendation}
+        onClose={() => setSelectedProduct(null)}
+      />
     </main>
   );
 }
@@ -602,12 +590,7 @@ type SummaryCardProps = {
   tone: "lime" | "blue" | "orange";
 };
 
-function SummaryCard({
-  label,
-  value,
-  description,
-  tone,
-}: SummaryCardProps) {
+function SummaryCard({ label, value, description, tone }: SummaryCardProps) {
   const toneClass = {
     lime: "text-[var(--lime)]",
     blue: "text-[var(--blue)]",
@@ -620,15 +603,11 @@ function SummaryCard({
         {label}
       </p>
 
-      <p
-        className={`metric-number mt-4 text-4xl font-semibold ${toneClass}`}
-      >
+      <p className={`metric-number mt-4 text-4xl font-semibold ${toneClass}`}>
         {value.toLocaleString()}
       </p>
 
-      <p className="mt-2 text-sm text-slate-500">
-        {description}
-      </p>
+      <p className="mt-2 text-sm text-slate-500">{description}</p>
     </div>
   );
 }
@@ -640,17 +619,10 @@ type FilterSelectProps = {
   onChange: (value: string) => void;
 };
 
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: FilterSelectProps) {
+function FilterSelect({ label, value, options, onChange }: FilterSelectProps) {
   return (
     <label className="glass-input rounded-2xl px-4 py-3">
-      <p className="text-xs text-slate-500">
-        {label}
-      </p>
+      <p className="text-xs text-slate-500">{label}</p>
 
       <select
         value={value}
@@ -662,11 +634,7 @@ function FilterSelect({
         </option>
 
         {options.map((option) => (
-          <option
-            key={option}
-            value={option}
-            className="bg-slate-950"
-          >
+          <option key={option} value={option} className="bg-slate-950">
             {option}
           </option>
         ))}
@@ -681,11 +649,7 @@ type RoomCardProps = {
   onClick: () => void;
 };
 
-function RoomCard({
-  summary,
-  active,
-  onClick,
-}: RoomCardProps) {
+function RoomCard({ summary, active, onClick }: RoomCardProps) {
   const styles = getRoomStyles(summary.room);
   const Icon = getRoomIcon(summary.room);
 
@@ -701,9 +665,7 @@ function RoomCard({
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-white">
-            {summary.room}
-          </p>
+          <p className="text-sm font-semibold text-white">{summary.room}</p>
 
           <p
             className={`metric-number mt-4 text-3xl font-semibold ${styles.text}`}
@@ -711,9 +673,7 @@ function RoomCard({
             {summary.packageCount.toLocaleString()}
           </p>
 
-          <p className="mt-1 text-xs text-slate-500">
-            packages
-          </p>
+          <p className="mt-1 text-xs text-slate-500">packages</p>
         </div>
 
         <div
@@ -724,9 +684,7 @@ function RoomCard({
       </div>
 
       <div className="mt-4 border-t border-white/[0.07] pt-3">
-        <p className="text-xs text-slate-500">
-          Available total
-        </p>
+        <p className="text-xs text-slate-500">Available total</p>
 
         <p className="mt-1 text-sm font-semibold text-slate-300">
           {summary.availableTotal.toLocaleString()}
@@ -736,11 +694,7 @@ function RoomCard({
   );
 }
 
-function RoomBadge({
-  room,
-}: {
-  room: RoomType;
-}) {
+function RoomBadge({ room }: { room: RoomType }) {
   const styles = getRoomStyles(room);
 
   return (
@@ -810,89 +764,61 @@ function getRoomStyles(room: RoomType) {
       text: "text-[var(--lime)]",
       badge:
         "border-[rgba(184,255,57,0.2)] bg-[rgba(184,255,57,0.08)] text-[var(--lime)]",
-      iconSurface:
-        "border-[rgba(184,255,57,0.2)] bg-[rgba(184,255,57,0.08)]",
-      activeBorder:
-        "border-[rgba(184,255,57,0.38)]",
-      activeBackground:
-        "bg-[rgba(184,255,57,0.08)]",
+      iconSurface: "border-[rgba(184,255,57,0.2)] bg-[rgba(184,255,57,0.08)]",
+      activeBorder: "border-[rgba(184,255,57,0.38)]",
+      activeBackground: "bg-[rgba(184,255,57,0.08)]",
     },
     Backstock: {
       text: "text-[var(--orange)]",
       badge:
         "border-[rgba(255,154,77,0.2)] bg-[rgba(255,154,77,0.08)] text-[var(--orange)]",
-      iconSurface:
-        "border-[rgba(255,154,77,0.2)] bg-[rgba(255,154,77,0.08)]",
-      activeBorder:
-        "border-[rgba(255,154,77,0.38)]",
-      activeBackground:
-        "bg-[rgba(255,154,77,0.08)]",
+      iconSurface: "border-[rgba(255,154,77,0.2)] bg-[rgba(255,154,77,0.08)]",
+      activeBorder: "border-[rgba(255,154,77,0.38)]",
+      activeBackground: "bg-[rgba(255,154,77,0.08)]",
     },
     "Receiving Room": {
       text: "text-[var(--blue)]",
       badge:
         "border-[rgba(126,162,255,0.2)] bg-[rgba(126,162,255,0.08)] text-[var(--blue)]",
-      iconSurface:
-        "border-[rgba(126,162,255,0.2)] bg-[rgba(126,162,255,0.08)]",
-      activeBorder:
-        "border-[rgba(126,162,255,0.38)]",
-      activeBackground:
-        "bg-[rgba(126,162,255,0.08)]",
+      iconSurface: "border-[rgba(126,162,255,0.2)] bg-[rgba(126,162,255,0.08)]",
+      activeBorder: "border-[rgba(126,162,255,0.38)]",
+      activeBackground: "bg-[rgba(126,162,255,0.08)]",
     },
     "Promo Room": {
       text: "text-fuchsia-300",
-      badge:
-        "border-fuchsia-400/20 bg-fuchsia-500/10 text-fuchsia-300",
-      iconSurface:
-        "border-fuchsia-400/20 bg-fuchsia-500/10",
-      activeBorder:
-        "border-fuchsia-400/40",
-      activeBackground:
-        "bg-fuchsia-500/10",
+      badge: "border-fuchsia-400/20 bg-fuchsia-500/10 text-fuchsia-300",
+      iconSurface: "border-fuchsia-400/20 bg-fuchsia-500/10",
+      activeBorder: "border-fuchsia-400/40",
+      activeBackground: "bg-fuchsia-500/10",
     },
     "Sample Room": {
       text: "text-cyan-300",
-      badge:
-        "border-cyan-400/20 bg-cyan-500/10 text-cyan-300",
-      iconSurface:
-        "border-cyan-400/20 bg-cyan-500/10",
-      activeBorder:
-        "border-cyan-400/40",
-      activeBackground:
-        "bg-cyan-500/10",
+      badge: "border-cyan-400/20 bg-cyan-500/10 text-cyan-300",
+      iconSurface: "border-cyan-400/20 bg-cyan-500/10",
+      activeBorder: "border-cyan-400/40",
+      activeBackground: "bg-cyan-500/10",
     },
     "Quarantine Room": {
       text: "text-[var(--red)]",
       badge:
         "border-[rgba(255,100,127,0.2)] bg-[rgba(255,100,127,0.08)] text-[var(--red)]",
-      iconSurface:
-        "border-[rgba(255,100,127,0.2)] bg-[rgba(255,100,127,0.08)]",
-      activeBorder:
-        "border-[rgba(255,100,127,0.38)]",
-      activeBackground:
-        "bg-[rgba(255,100,127,0.08)]",
+      iconSurface: "border-[rgba(255,100,127,0.2)] bg-[rgba(255,100,127,0.08)]",
+      activeBorder: "border-[rgba(255,100,127,0.38)]",
+      activeBackground: "bg-[rgba(255,100,127,0.08)]",
     },
     Holding: {
       text: "text-amber-300",
-      badge:
-        "border-amber-400/20 bg-amber-500/10 text-amber-300",
-      iconSurface:
-        "border-amber-400/20 bg-amber-500/10",
-      activeBorder:
-        "border-amber-400/40",
-      activeBackground:
-        "bg-amber-500/10",
+      badge: "border-amber-400/20 bg-amber-500/10 text-amber-300",
+      iconSurface: "border-amber-400/20 bg-amber-500/10",
+      activeBorder: "border-amber-400/40",
+      activeBackground: "bg-amber-500/10",
     },
     Other: {
       text: "text-slate-300",
-      badge:
-        "border-white/10 bg-white/[0.045] text-slate-300",
-      iconSurface:
-        "border-white/10 bg-white/[0.045]",
-      activeBorder:
-        "border-white/25",
-      activeBackground:
-        "bg-white/[0.06]",
+      badge: "border-white/10 bg-white/[0.045] text-slate-300",
+      iconSurface: "border-white/10 bg-white/[0.045]",
+      activeBorder: "border-white/25",
+      activeBackground: "bg-white/[0.06]",
     },
   };
 
@@ -914,7 +840,5 @@ function normalize(value: string): string {
 }
 
 function uniqueSorted(values: string[]): string[] {
-  return Array.from(new Set(values)).sort((a, b) =>
-    a.localeCompare(b)
-  );
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
