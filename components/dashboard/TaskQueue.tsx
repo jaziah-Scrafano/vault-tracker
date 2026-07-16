@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import {
   ArrowDown,
   Check,
@@ -27,10 +32,14 @@ export default function TaskQueue({
 }: TaskQueueProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [copiedPackageId, setCopiedPackageId] = useState("");
+  const [transitionState, setTransitionState] = useState<
+    "idle" | "leaving" | "entering"
+  >("idle");
 
   const pendingTasks = useMemo(() => {
     return recommendations.filter(
-      (item) => !completedPackageIds.includes(item.packageId)
+      (item) =>
+        !completedPackageIds.includes(item.packageId)
     );
   }, [recommendations, completedPackageIds]);
 
@@ -51,6 +60,55 @@ export default function TaskQueue({
           (completedCount / recommendations.length) * 100
         );
 
+  useEffect(() => {
+    if (activeIndex > pendingTasks.length - 1) {
+      setActiveIndex(
+        pendingTasks.length > 0
+          ? pendingTasks.length - 1
+          : 0
+      );
+    }
+  }, [activeIndex, pendingTasks.length]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+
+      const typing =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+
+      if (typing || transitionState !== "idle") {
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        showPrevious();
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        showNext();
+      }
+
+      if (event.code === "Space" && activeTask) {
+        event.preventDefault();
+        completeCurrentTask();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  });
+
   async function copyPackageId(packageId: string) {
     try {
       await navigator.clipboard.writeText(packageId);
@@ -58,41 +116,98 @@ export default function TaskQueue({
 
       window.setTimeout(() => {
         setCopiedPackageId("");
-      }, 1500);
+      }, 1400);
     } catch {
-      window.alert("The METRC Package ID could not be copied.");
+      window.alert(
+        "The METRC Package ID could not be copied."
+      );
     }
   }
 
   function showPrevious() {
-    setActiveIndex((current) =>
-      current <= 0 ? pendingTasks.length - 1 : current - 1
-    );
-  }
-
-  function showNext() {
-    setActiveIndex((current) =>
-      current >= pendingTasks.length - 1 ? 0 : current + 1
-    );
-  }
-
-  function completeCurrentTask() {
-    if (!activeTask) {
+    if (pendingTasks.length <= 1) {
       return;
     }
 
-    onComplete(activeTask);
+    setTransitionState("leaving");
 
-    setActiveIndex((current) => {
-      const nextLength = pendingTasks.length - 1;
+    window.setTimeout(() => {
+      setActiveIndex((current) =>
+        current <= 0
+          ? pendingTasks.length - 1
+          : current - 1
+      );
 
-      if (nextLength <= 0) {
-        return 0;
-      }
+      setTransitionState("entering");
 
-      return Math.min(current, nextLength - 1);
-    });
+      window.setTimeout(() => {
+        setTransitionState("idle");
+      }, 220);
+    }, 180);
   }
+
+  function showNext() {
+    if (pendingTasks.length <= 1) {
+      return;
+    }
+
+    setTransitionState("leaving");
+
+    window.setTimeout(() => {
+      setActiveIndex((current) =>
+        current >= pendingTasks.length - 1
+          ? 0
+          : current + 1
+      );
+
+      setTransitionState("entering");
+
+      window.setTimeout(() => {
+        setTransitionState("idle");
+      }, 220);
+    }, 180);
+  }
+
+  function completeCurrentTask() {
+    if (!activeTask || transitionState !== "idle") {
+      return;
+    }
+
+    const taskToComplete = activeTask;
+
+    setTransitionState("leaving");
+
+    window.setTimeout(() => {
+      onComplete(taskToComplete);
+
+      setActiveIndex((current) => {
+        const remainingLength =
+          pendingTasks.length - 1;
+
+        if (remainingLength <= 0) {
+          return 0;
+        }
+
+        return Math.min(
+          current,
+          remainingLength - 1
+        );
+      });
+
+      setTransitionState("entering");
+
+      window.setTimeout(() => {
+        setTransitionState("idle");
+      }, 240);
+    }, 220);
+  }
+
+  const animationClass =
+    transitionState === "leaving"
+      ? "translate-y-3 scale-[0.985] opacity-0"
+      : transitionState === "entering"
+        ? "-translate-y-3 scale-[0.985] opacity-0"
+        : "translate-y-0 scale-100 opacity-100";
 
   return (
     <section className="glass-panel rounded-[30px] p-5 sm:p-7">
@@ -107,7 +222,13 @@ export default function TaskQueue({
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Complete one transfer at a time using the exact METRC package ID.
+            Complete one transfer at a time using
+            the exact METRC Package ID.
+          </p>
+
+          <p className="mt-3 text-xs text-slate-600">
+            Keyboard: Space to complete · ← previous ·
+            → next
           </p>
         </div>
 
@@ -118,13 +239,14 @@ export default function TaskQueue({
             </span>
 
             <span className="font-semibold text-white">
-              {completedCount} / {recommendations.length}
+              {completedCount} /{" "}
+              {recommendations.length}
             </span>
           </div>
 
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]">
             <div
-              className="h-full rounded-full bg-[var(--lime)] transition-all duration-300"
+              className="h-full rounded-full bg-[var(--lime)] transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -160,14 +282,17 @@ export default function TaskQueue({
           </p>
 
           <p className="mt-2 text-sm text-slate-500">
-            No additional packages need to move into the Vault.
+            No additional packages need to move
+            into the Vault.
           </p>
         </div>
       )}
 
       {activeTask && (
-        <div className="pt-6">
-          <div className="grid gap-5 xl:grid-cols-[1fr_240px]">
+        <div className="overflow-hidden pt-6">
+          <div
+            className={`grid gap-5 transition-all duration-200 ease-out xl:grid-cols-[1fr_240px] ${animationClass}`}
+          >
             <div className="rounded-[26px] border border-white/10 bg-black/20 p-5 sm:p-7">
               <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -180,7 +305,8 @@ export default function TaskQueue({
                   </h3>
 
                   <p className="mt-2 text-sm text-slate-500">
-                    {activeTask.vendor || "Vendor not listed"}
+                    {activeTask.vendor ||
+                      "Vendor not listed"}
 
                     {activeTask.strain
                       ? ` · ${activeTask.strain}`
@@ -189,7 +315,8 @@ export default function TaskQueue({
                 </div>
 
                 <span className="w-fit rounded-full border border-white/10 bg-white/[0.045] px-3 py-1.5 text-xs font-semibold text-slate-300">
-                  {activeTask.category || "Uncategorized"}
+                  {activeTask.category ||
+                    "Uncategorized"}
                 </span>
               </div>
 
@@ -201,7 +328,9 @@ export default function TaskQueue({
                 <button
                   type="button"
                   onClick={() =>
-                    copyPackageId(activeTask.packageId)
+                    copyPackageId(
+                      activeTask.packageId
+                    )
                   }
                   className="mt-3 flex w-full items-center justify-between gap-4 rounded-2xl border border-[rgba(184,255,57,0.2)] bg-[rgba(184,255,57,0.07)] px-4 py-4 text-left transition hover:border-[rgba(184,255,57,0.35)] hover:bg-[rgba(184,255,57,0.1)]"
                 >
@@ -209,7 +338,8 @@ export default function TaskQueue({
                     {activeTask.packageId}
                   </span>
 
-                  {copiedPackageId === activeTask.packageId ? (
+                  {copiedPackageId ===
+                  activeTask.packageId ? (
                     <Check className="h-5 w-5 shrink-0 text-[var(--lime)]" />
                   ) : (
                     <Clipboard className="h-5 w-5 shrink-0 text-slate-400" />
@@ -254,10 +384,16 @@ export default function TaskQueue({
               <button
                 type="button"
                 onClick={completeCurrentTask}
-                className="mt-6 flex w-full items-center justify-center gap-3 rounded-2xl border border-[rgba(184,255,57,0.3)] bg-[var(--lime)] px-5 py-4 font-bold text-black transition hover:brightness-110"
+                disabled={
+                  transitionState !== "idle"
+                }
+                className="mt-6 flex w-full items-center justify-center gap-3 rounded-2xl border border-[rgba(184,255,57,0.3)] bg-[var(--lime)] px-5 py-4 font-bold text-black transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
               >
                 <Check className="h-5 w-5" />
-                Mark transfer complete
+
+                {transitionState === "leaving"
+                  ? "Completing transfer..."
+                  : "Mark transfer complete"}
               </button>
             </div>
 
@@ -278,7 +414,10 @@ export default function TaskQueue({
                 <button
                   type="button"
                   onClick={showPrevious}
-                  disabled={pendingTasks.length <= 1}
+                  disabled={
+                    pendingTasks.length <= 1 ||
+                    transitionState !== "idle"
+                  }
                   className="flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] py-3 text-slate-300 transition hover:bg-white/[0.075] disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label="Previous task"
                 >
@@ -288,7 +427,10 @@ export default function TaskQueue({
                 <button
                   type="button"
                   onClick={showNext}
-                  disabled={pendingTasks.length <= 1}
+                  disabled={
+                    pendingTasks.length <= 1 ||
+                    transitionState !== "idle"
+                  }
                   className="flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] py-3 text-slate-300 transition hover:bg-white/[0.075] disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label="Next task"
                 >
@@ -297,8 +439,9 @@ export default function TaskQueue({
               </div>
 
               <div className="mt-6 border-t border-white/[0.08] pt-5">
-                <p className="text-sm text-slate-500">
-                  Complete this package and the next pending transfer will appear automatically.
+                <p className="text-sm leading-6 text-slate-500">
+                  Complete this package and the next
+                  pending transfer will slide into place.
                 </p>
               </div>
             </aside>

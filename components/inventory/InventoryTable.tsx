@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
 import {
   Check,
   Clipboard,
   Download,
+  Filter,
   Search,
+  X,
 } from "lucide-react";
 
 import type { MoveRecommendation } from "@/types/inventory";
@@ -18,6 +20,10 @@ type InventoryTableProps = {
   onComplete: (item: MoveRecommendation) => void;
 };
 
+type CategoryFilterEvent = CustomEvent<{
+  category: string;
+}>;
+
 export default function InventoryTable({
   recommendations,
   hasInventory,
@@ -25,30 +31,82 @@ export default function InventoryTable({
   onComplete,
 }: InventoryTableProps) {
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+
+  const pendingRecommendations = useMemo(() => {
+    return recommendations.filter(
+      (item) => !completedPackageIds.includes(item.packageId)
+    );
+  }, [recommendations, completedPackageIds]);
+
+  const categories = useMemo(() => {
+    const categorySet = new Set<string>();
+
+    for (const item of pendingRecommendations) {
+      categorySet.add(item.category.trim() || "Uncategorized");
+    }
+
+    return Array.from(categorySet).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [pendingRecommendations]);
 
   const activeRecommendations = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return recommendations
-      .filter(
-        (item) =>
-          !completedPackageIds.includes(item.packageId)
-      )
-      .filter((item) => {
-        if (!query) {
-          return true;
-        }
+    return pendingRecommendations.filter((item) => {
+      const itemCategory =
+        item.category.trim() || "Uncategorized";
 
-        return (
-          item.packageId.toLowerCase().includes(query) ||
-          item.product.toLowerCase().includes(query) ||
-          item.strain.toLowerCase().includes(query) ||
-          item.vendor.toLowerCase().includes(query) ||
-          item.category.toLowerCase().includes(query) ||
-          item.moveFrom.toLowerCase().includes(query)
-        );
-      });
-  }, [recommendations, completedPackageIds, search]);
+      const matchesCategory =
+        categoryFilter === "All" ||
+        itemCategory.toLowerCase() ===
+          categoryFilter.toLowerCase();
+
+      if (!matchesCategory) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return (
+        item.packageId.toLowerCase().includes(query) ||
+        item.product.toLowerCase().includes(query) ||
+        item.strain.toLowerCase().includes(query) ||
+        item.vendor.toLowerCase().includes(query) ||
+        itemCategory.toLowerCase().includes(query) ||
+        item.moveFrom.toLowerCase().includes(query)
+      );
+    });
+  }, [pendingRecommendations, search, categoryFilter]);
+
+  useEffect(() => {
+    function handleCategoryFilter(event: Event) {
+      const customEvent = event as CategoryFilterEvent;
+      const category = customEvent.detail?.category;
+
+      if (!category) {
+        return;
+      }
+
+      setCategoryFilter(category);
+      setSearch("");
+    }
+
+    window.addEventListener(
+      "vault-tracker-category-filter",
+      handleCategoryFilter
+    );
+
+    return () => {
+      window.removeEventListener(
+        "vault-tracker-category-filter",
+        handleCategoryFilter
+      );
+    };
+  }, []);
 
   async function copyMetrc(packageId: string) {
     try {
@@ -58,6 +116,11 @@ export default function InventoryTable({
         "The METRC Package ID could not be copied."
       );
     }
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setCategoryFilter("All");
   }
 
   function exportMoveList() {
@@ -82,15 +145,23 @@ export default function InventoryTable({
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = "vault-move-list.csv";
-    link.click();
+    link.download =
+      categoryFilter === "All"
+        ? "vault-move-list.csv"
+        : `vault-move-list-${categoryFilter
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")}.csv`;
 
+    link.click();
     URL.revokeObjectURL(url);
   }
 
+  const hasActiveFilters =
+    search.trim().length > 0 || categoryFilter !== "All";
+
   return (
     <section className="glass-panel rounded-[30px] p-4 sm:p-6">
-      <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
             Transfer Queue
@@ -103,12 +174,12 @@ export default function InventoryTable({
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
             One exact package is recommended when the Vault
             has zero of that product. Backstock is prioritized,
-            then Receiving room.
+            followed by Receiving room.
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="glass-input flex min-w-0 items-center gap-3 rounded-2xl px-4 py-3 sm:min-w-[320px]">
+        <div className="flex flex-col gap-3 lg:flex-row">
+          <div className="glass-input flex min-w-0 items-center gap-3 rounded-2xl px-4 py-3 sm:min-w-[300px]">
             <Search className="h-4 w-4 shrink-0 text-slate-500" />
 
             <input
@@ -122,6 +193,32 @@ export default function InventoryTable({
             />
           </div>
 
+          <div className="glass-input flex items-center gap-3 rounded-2xl px-4 py-3">
+            <Filter className="h-4 w-4 shrink-0 text-slate-500" />
+
+            <select
+              value={categoryFilter}
+              onChange={(event) =>
+                setCategoryFilter(event.target.value)
+              }
+              className="min-w-[170px] bg-transparent text-sm text-white outline-none"
+            >
+              <option value="All" className="bg-slate-950">
+                All categories
+              </option>
+
+              {categories.map((category) => (
+                <option
+                  key={category}
+                  value={category}
+                  className="bg-slate-950"
+                >
+                  {category}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={exportMoveList}
@@ -132,6 +229,37 @@ export default function InventoryTable({
             Export queue
           </button>
         </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-300">
+            {activeRecommendations.length.toLocaleString()} shown
+          </span>
+
+          {categoryFilter !== "All" && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(126,162,255,0.2)] bg-[rgba(126,162,255,0.08)] px-3 py-1.5 text-xs font-semibold text-[var(--blue)]">
+              Category: {categoryFilter}
+            </span>
+          )}
+
+          {search.trim() && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-300">
+              Search: {search.trim()}
+            </span>
+          )}
+        </div>
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/[0.075]"
+          >
+            <X className="h-3.5 w-3.5" />
+            Clear filters
+          </button>
+        )}
       </div>
 
       <div className="table-shell custom-scrollbar overflow-x-auto">
@@ -268,8 +396,8 @@ export default function InventoryTable({
                     colSpan={6}
                     className="px-5 py-16 text-center text-slate-500"
                   >
-                    {search
-                      ? "No transfers match your search."
+                    {hasActiveFilters
+                      ? "No transfers match the selected filters."
                       : "No pending Vault transfers."}
                   </td>
                 </tr>

@@ -20,13 +20,19 @@ import StatCard from "@/components/dashboard/StatCard";
 import UploadCard from "@/components/dashboard/UploadCard";
 import QuickActions from "@/components/dashboard/QuickActions";
 import TaskQueue from "@/components/dashboard/TaskQueue";
+import MissingVaultDashboard from "@/components/dashboard/MissingVaultDashboard";
+import ReceivingAssistant from "@/components/dashboard/ReceivingAssistant";
 import InventoryTable from "@/components/inventory/InventoryTable";
 
 import { parseInventoryFile } from "@/lib/parser";
 import { createMoveRecommendations } from "@/lib/recommendations";
 import {
   getCompletedMoves,
+  getCurrentInventory,
+  getInventoryFileName,
   saveCompletedMoves,
+  saveCurrentInventory,
+  saveInventoryFileName,
 } from "@/lib/storage";
 
 import type {
@@ -43,13 +49,19 @@ export default function Dashboard() {
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [storageLoaded, setStorageLoaded] = useState(false);
 
   const uploadSectionRef = useRef<HTMLElement>(null);
   const taskQueueRef = useRef<HTMLElement>(null);
   const transferTableRef = useRef<HTMLElement>(null);
+  const missingVaultRef = useRef<HTMLElement>(null);
+  const receivingAssistantRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    setInventory(getCurrentInventory());
     setCompletedMoves(getCompletedMoves());
+    setFileName(getInventoryFileName());
+    setStorageLoaded(true);
   }, []);
 
   const recommendations = useMemo(() => {
@@ -119,16 +131,16 @@ export default function Dashboard() {
         await parseInventoryFile(file);
 
       setInventory(parsedInventory);
+      saveCurrentInventory(parsedInventory);
+      saveInventoryFileName(file.name);
 
       window.setTimeout(() => {
-        taskQueueRef.current?.scrollIntoView({
+        missingVaultRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "start",
         });
       }, 100);
     } catch (uploadError) {
-      setInventory([]);
-
       setError(
         uploadError instanceof Error
           ? uploadError.message
@@ -180,12 +192,50 @@ export default function Dashboard() {
     });
   }
 
+  function scrollToMissingVault() {
+    missingVaultRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
+  function scrollToReceivingAssistant() {
+    receivingAssistantRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
+  function handleSelectCategory(category: string) {
+    scrollToTransfers();
+
+    window.setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("vault-tracker-category-filter", {
+          detail: {
+            category,
+          },
+        })
+      );
+    }, 250);
+  }
+
   function exportQueue() {
     scrollToTransfers();
   }
 
   function refreshView() {
     window.location.reload();
+  }
+
+  if (!storageLoaded) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-5 text-white">
+        <div className="glass-panel rounded-[28px] px-6 py-5 text-sm text-slate-400">
+          Loading Vault Tracker...
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -217,6 +267,7 @@ export default function Dashboard() {
               description="Positive packages in Vault"
               icon={PackageCheck}
               tone="blue"
+              onClick={scrollToMissingVault}
             />
 
             <StatCard
@@ -225,6 +276,7 @@ export default function Dashboard() {
               description="Positive packages in Backstock"
               icon={Boxes}
               tone="orange"
+              onClick={scrollToTransfers}
             />
 
             <StatCard
@@ -233,6 +285,7 @@ export default function Dashboard() {
               description="Available in Receiving room"
               icon={Warehouse}
               tone="red"
+              onClick={scrollToReceivingAssistant}
             />
           </section>
 
@@ -256,6 +309,30 @@ export default function Dashboard() {
               exportDisabled={
                 pendingRecommendations.length === 0
               }
+            />
+          </section>
+
+          <section
+            ref={missingVaultRef}
+            className="mt-5 scroll-mt-5"
+          >
+            <MissingVaultDashboard
+              recommendations={recommendations}
+              completedPackageIds={completedPackageIds}
+              onSelectCategory={handleSelectCategory}
+              onViewAll={scrollToTransfers}
+            />
+          </section>
+
+          <section
+            ref={receivingAssistantRef}
+            className="mt-5 scroll-mt-5"
+          >
+            <ReceivingAssistant
+              recommendations={recommendations}
+              completedPackageIds={completedPackageIds}
+              onComplete={handleComplete}
+              onViewAll={scrollToTransfers}
             />
           </section>
 
