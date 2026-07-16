@@ -1,4 +1,7 @@
-import type { CountSessionSummary } from "@/types/analytics";
+import type {
+  CountSessionSummary,
+  SavedCountSession,
+} from "@/types/analytics";
 import type { CompletedMove } from "@/types/history";
 import type { InventoryRow } from "@/types/inventory";
 
@@ -13,6 +16,9 @@ const INVENTORY_FILE_NAME_KEY =
 
 const LATEST_COUNT_SESSION_KEY =
   "vault-tracker-latest-count-session";
+
+const SAVED_COUNT_SESSION_KEY =
+  "vault-tracker-saved-count-session";
 
 const INVENTORY_UPLOAD_TIME_KEY =
   "vault-tracker-inventory-upload-time";
@@ -252,5 +258,67 @@ export function clearLatestCountSession(): void {
 
   window.localStorage.removeItem(
     LATEST_COUNT_SESSION_KEY
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Full active count session                                                   */
+/* -------------------------------------------------------------------------- */
+
+export function getSavedCountSession():
+  | SavedCountSession
+  | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const saved = window.localStorage.getItem(
+      SAVED_COUNT_SESSION_KEY
+    );
+
+    if (!saved) {
+      return null;
+    }
+
+    const parsed: unknown = JSON.parse(saved);
+
+    if (
+      typeof parsed !== "object" ||
+      parsed === null
+    ) {
+      return null;
+    }
+
+    return parsed as SavedCountSession;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCountSession(
+  session: SavedCountSession
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      SAVED_COUNT_SESSION_KEY,
+      JSON.stringify(session)
+    );
+  } catch {
+    // Ignore browser storage failures.
+  }
+}
+
+export function clearSavedCountSession(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(
+    SAVED_COUNT_SESSION_KEY
   );
 }

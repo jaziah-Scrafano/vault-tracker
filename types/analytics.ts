@@ -1,3 +1,5 @@
+import type { CountEntry } from "@/types/count";
+
 export type CountSessionSummary = {
   scopeType: "all" | "room" | "category";
   scopeValue: string;
@@ -10,6 +12,12 @@ export type CountSessionSummary = {
   progress: number;
   startedAt: string;
   updatedAt: string;
+};
+
+export type SavedCountSession = {
+  summary: CountSessionSummary;
+  entries: CountEntry[];
+  countFileName: string;
 };
 
 export type RoomMetric = {
