@@ -2,6 +2,7 @@ import type { InventoryRow } from "@/types/inventory";
 import type {
   CountEntry,
   CountResult,
+  CountStatus,
 } from "@/types/count";
 
 export function buildCountResults(
@@ -19,8 +20,9 @@ export function buildCountResults(
 
   return inventory
     .filter((row) => cleanCsvValue(row.packageId))
-    .map((row) => {
+    .map((row): CountResult => {
       const packageId = cleanCsvValue(row.packageId);
+
       const counted =
         countMap.get(normalizePackageId(packageId)) ?? null;
 
@@ -29,12 +31,15 @@ export function buildCountResults(
           ? null
           : counted - row.available;
 
-      const status =
-        counted === null
-          ? "not-counted"
-          : variance === 0
-            ? "match"
-            : "mismatch";
+      let status: CountStatus;
+
+      if (counted === null) {
+        status = "not-counted";
+      } else if (variance === 0) {
+        status = "match";
+      } else {
+        status = "mismatch";
+      }
 
       return {
         packageId,
